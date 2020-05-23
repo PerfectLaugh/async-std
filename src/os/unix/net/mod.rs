@@ -1,7 +1,7 @@
 //! Unix-specific networking extensions.
 
 pub use datagram::UnixDatagram;
-pub use listener::{Incoming, UnixListener};
+pub use listener::UnixListener;
 pub use stream::UnixStream;
 
 mod datagram;

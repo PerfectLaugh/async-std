@@ -1,9 +1,7 @@
 //! Unix-specific networking extensions.
 
 use std::fmt;
-use std::future::Future;
 use std::os::unix::net::UnixListener as StdUnixListener;
-use std::pin::Pin;
 
 use smol::Async;
 
@@ -14,7 +12,6 @@ use crate::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use crate::path::Path;
 use crate::stream::Stream;
 use crate::sync::Arc;
-use crate::task::{Context, Poll};
 
 /// A Unix domain socket server, listening for connections.
 ///
@@ -122,8 +119,13 @@ impl UnixListener {
     /// #
     /// # Ok(()) }) }
     /// ```
-    pub fn incoming(&self) -> Incoming<'_> {
-        Incoming(self)
+    pub fn incoming(
+        &self,
+    ) -> impl Stream<Item = io::Result<UnixStream>> + Send + Unpin + '_ {
+        Box::pin(futures_util::stream::unfold(self, |listener| async move {
+            let res = listener.accept().await.map(|(stream, _)| stream );
+            Some((res, listener))
+        }))
     }
 
     /// Returns the local socket address of this listener.
@@ -155,32 +157,6 @@ impl fmt::Debug for UnixListener {
         }
 
         builder.finish()
-    }
-}
-
-/// A stream of incoming Unix domain socket connections.
-///
-/// This stream is infinite, i.e awaiting the next connection will never result in [`None`]. It is
-/// created by the [`incoming`] method on [`UnixListener`].
-///
-/// This type is an async version of [`std::os::unix::net::Incoming`].
-///
-/// [`std::os::unix::net::Incoming`]: https://doc.rust-lang.org/std/os/unix/net/struct.Incoming.html
-/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-/// [`incoming`]: struct.UnixListener.html#method.incoming
-/// [`UnixListener`]: struct.UnixListener.html
-#[derive(Debug)]
-pub struct Incoming<'a>(&'a UnixListener);
-
-impl Stream for Incoming<'_> {
-    type Item = io::Result<UnixStream>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let future = self.0.accept();
-        pin_utils::pin_mut!(future);
-
-        let (socket, _) = futures_core::ready!(future.poll(cx))?;
-        Poll::Ready(Some(Ok(socket)))
     }
 }
 

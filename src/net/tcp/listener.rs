@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 
 use smol::Async;
 
@@ -8,7 +6,6 @@ use crate::io;
 use crate::net::{TcpStream, ToSocketAddrs};
 use crate::stream::Stream;
 use crate::sync::Arc;
-use crate::task::{Context, Poll};
 
 /// A TCP socket server, listening for connections.
 ///
@@ -145,8 +142,13 @@ impl TcpListener {
     /// #
     /// # Ok(()) }) }
     /// ```
-    pub fn incoming(&self) -> Incoming<'_> {
-        Incoming(self)
+    pub fn incoming(
+        &self,
+    ) -> impl Stream<Item = io::Result<TcpStream>> + Send + Unpin + '_ {
+        Box::pin(futures_util::stream::unfold(self, |listener| async move {
+            let res = listener.accept().await.map(|(stream, _)| stream );
+            Some((res, listener))
+        }))
     }
 
     /// Returns the local address that this listener is bound to.
@@ -168,32 +170,6 @@ impl TcpListener {
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.watcher.get_ref().local_addr()
-    }
-}
-
-/// A stream of incoming TCP connections.
-///
-/// This stream is infinite, i.e awaiting the next connection will never result in [`None`]. It is
-/// created by the [`incoming`] method on [`TcpListener`].
-///
-/// This type is an async version of [`std::net::Incoming`].
-///
-/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-/// [`incoming`]: struct.TcpListener.html#method.incoming
-/// [`TcpListener`]: struct.TcpListener.html
-/// [`std::net::Incoming`]: https://doc.rust-lang.org/std/net/struct.Incoming.html
-#[derive(Debug)]
-pub struct Incoming<'a>(&'a TcpListener);
-
-impl<'a> Stream for Incoming<'a> {
-    type Item = io::Result<TcpStream>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let future = self.0.accept();
-        pin_utils::pin_mut!(future);
-
-        let (socket, _) = futures_core::ready!(future.poll(cx))?;
-        Poll::Ready(Some(Ok(socket)))
     }
 }
 

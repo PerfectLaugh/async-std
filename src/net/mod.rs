@@ -64,7 +64,7 @@ pub use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 #[cfg(not(target_os = "unknown"))]
 pub use addr::ToSocketAddrs;
 #[cfg(not(target_os = "unknown"))]
-pub use tcp::{Incoming, TcpListener, TcpStream};
+pub use tcp::{TcpListener, TcpStream};
 #[cfg(not(target_os = "unknown"))]
 pub use udp::UdpSocket;
 
